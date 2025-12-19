@@ -1,0 +1,12 @@
+{
+  "characterId": "enemy_cyberbully",
+  "frameWidth": 304,
+  "frameHeight": 424,
+  "animations": {
+    "walking": {
+      "file": "spritesheets/enemy_cyberbully/walking.png",
+      "fps": 8,
+      "frameCount": 32
+    }
+  }
+}

@@ -1,0 +1,15 @@
+# Generated intermediate assets (do not commit)
+assets/work/
+
+# Node/Vite
+node_modules/
+dist/
+.vite/
+
+# OS / editor noise
+.DS_Store
+
+# Cursor
+.cursor/
+
+

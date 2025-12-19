@@ -1,0 +1,22 @@
+{
+  "characterId": "main_char",
+  "frameWidth": 680,
+  "frameHeight": 432,
+  "animations": {
+    "idle": {
+      "file": "spritesheets/main_char/idle.png",
+      "fps": 8,
+      "frameCount": 32
+    },
+    "walking": {
+      "file": "spritesheets/main_char/walking.png",
+      "fps": 8,
+      "frameCount": 32
+    },
+    "attack": {
+      "file": "spritesheets/main_char/attack.png",
+      "fps": 8,
+      "frameCount": 32
+    }
+  }
+}

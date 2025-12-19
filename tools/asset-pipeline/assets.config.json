@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "defaults": {
+    "removeWhite": {
+      "fuzzPercent": 5
+    },
+    "pad": {
+      "extraPaddingPx": 4
+    },
+    "rounding": {
+      "multiple": 8
+    },
+    "ffmpeg": {
+      "fps": 8
+    }
+  },
+  "characters": [
+    {
+      "characterId": "main_char",
+      "animations": [
+        { "name": "idle", "srcMp4": "assets/raw/main_char/main_idle_pose.mp4", "fps": 8 },
+        { "name": "walking", "srcMp4": "assets/raw/main_char/main_walking.mp4", "fps": 8 },
+        { "name": "attack", "srcMp4": "assets/raw/main_char/main_hit_animation.mp4", "fps": 8, "maxSeconds": 2.0 }
+      ]
+    },
+    {
+      "characterId": "enemy_cyberbully",
+      "animations": [
+        { "name": "walking", "srcMp4": "assets/raw/enemy/cyberbully_walking.mp4", "fps": 8 }
+      ]
+    },
+    {
+      "characterId": "end_boss_wolmerath",
+      "animations": [
+        { "name": "walking", "srcMp4": "assets/raw/end_boss/wolmerath_walking.mp4", "fps": 8 },
+        { "name": "idle", "srcMp4": "assets/raw/end_boss/wolmerath_idle_pose.mp4", "fps": 8 },
+        { "name": "attack_1", "srcMp4": "assets/raw/end_boss/wolmerath_attack.mp4", "fps": 8 }
+      ]
+    }
+  ]
+}

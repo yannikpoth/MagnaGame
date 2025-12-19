@@ -1,0 +1,32 @@
+{
+  "characterId": "end_boss_wolmerath",
+  "frameWidth": 776,
+  "frameHeight": 480,
+  "animations": {
+    "walking_pose_v1": {
+      "file": "spritesheets/end_boss_wolmerath/walking_pose_v1.png",
+      "fps": 8,
+      "frameCount": 32
+    },
+    "walking": {
+      "file": "spritesheets/end_boss_wolmerath/walking.png",
+      "fps": 8,
+      "frameCount": 32
+    },
+    "idle": {
+      "file": "spritesheets/end_boss_wolmerath/idle.png",
+      "fps": 8,
+      "frameCount": 32
+    },
+    "attack_1": {
+      "file": "spritesheets/end_boss_wolmerath/attack_1.png",
+      "fps": 8,
+      "frameCount": 32
+    },
+    "attack_2": {
+      "file": "spritesheets/end_boss_wolmerath/attack_2.png",
+      "fps": 8,
+      "frameCount": 32
+    }
+  }
+}

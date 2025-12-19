@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MagnaGame</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #0b0f1a;
+        height: 100%;
+        overflow: hidden;
+      }
+      #app {
+        width: 100vw;
+        height: 100vh;
+      }
+      canvas {
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+      }
+
+      /* --- Splash overlays (DOM, above Phaser canvas) --- */
+      .overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 10;
+        background: #000;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+      }
+      .overlay.is-visible {
+        display: flex;
+      }
+      .overlay.fade-out {
+        opacity: 0;
+        transition: opacity 0.8s ease;
+        pointer-events: none;
+      }
+
+      #pre-splash {
+        z-index: 20;
+        flex-direction: column;
+        gap: 14px;
+        text-align: center;
+        padding: 24px;
+      }
+      #pre-splash-title {
+        color: #fff;
+        font-size: 28px;
+        letter-spacing: 2px;
+        text-shadow: 0 0 18px rgba(255, 0, 85, 0.5);
+      }
+      #pre-splash-subtitle {
+        color: rgba(255, 255, 255, 0.8);
+        font-size: 14px;
+        max-width: 720px;
+        line-height: 1.4;
+      }
+      #pre-splash-button {
+        appearance: none;
+        border: 2px solid #fff;
+        background: rgba(255, 0, 85, 0.1);
+        color: #fff;
+        padding: 12px 18px;
+        font-size: 16px;
+        letter-spacing: 1px;
+        cursor: pointer;
+      }
+      #pre-splash-button:hover {
+        background: rgba(255, 0, 85, 0.2);
+      }
+
+      #splash-screen {
+        z-index: 15;
+      }
+      #intro-video {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        /* Fit to browser width/height without cropping (allows black bars). */
+        object-fit: contain;
+      }
+      #ui-container {
+        position: absolute;
+        bottom: 12%;
+        width: min(720px, 80vw);
+        text-align: center;
+      }
+      #progress-container {
+        width: 100%;
+        height: 18px;
+        background: rgba(255, 255, 255, 0.18);
+        border: 2px solid rgba(255, 255, 255, 0.9);
+      }
+      #progress-fill {
+        width: 0%;
+        height: 100%;
+        background: #ff0055;
+        transition: width 0.1s linear;
+      }
+      #start-text {
+        margin-top: 18px;
+        color: #fff;
+        font-size: 24px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        text-shadow: 0 0 16px rgba(255, 0, 85, 0.9);
+        display: none;
+        user-select: none;
+        animation: pulse 0.8s infinite alternate;
+      }
+      @keyframes pulse {
+        from {
+          opacity: 1;
+        }
+        to {
+          opacity: 0.35;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Stage A: lightweight “click/space to begin” gate (helps slow networks + future audio autoplay rules) -->
+    <div id="pre-splash" class="overlay is-visible" aria-label="Start screen">
+      <div id="pre-splash-title">MAGNA SUSI</div>
+      <button id="pre-splash-button" type="button">CLICK / PRESS SPACE TO BEGIN</button>
+      <div id="pre-splash-subtitle">
+        This ensures the splash video (and later the soundtrack) can start reliably in all browsers.
+      </div>
+    </div>
+
+    <!-- Stage B/C: video background + Phaser-driven progress bar + press-to-start once loaded -->
+    <div id="splash-screen" class="overlay" aria-label="Loading screen">
+      <video id="intro-video" autoplay loop muted playsinline preload="none">
+        <!-- data-src is set by JS after user gesture to avoid early video download -->
+        <source
+          data-src="/splash/magna_susi_game_cover_final.mp4"
+          data-src-fallback="/splash/magna_susi_game_cover_final.mp4"
+          type="video/mp4"
+        />
+      </video>
+
+      <div id="ui-container">
+        <div id="progress-container"><div id="progress-fill"></div></div>
+        <div id="start-text">PRESS SPACE TO ROCK</div>
+      </div>
+    </div>
+
+    <div id="app"></div>
+
+    <!-- Vendored Phaser (no Node required) -->
+    <script src="/vendor/phaser.min.js"></script>
+
+    <!-- Game entry (ES modules) -->
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
+
