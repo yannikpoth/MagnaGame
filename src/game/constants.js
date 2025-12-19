@@ -59,3 +59,14 @@ export const BOSS = {
   attackWindupMs: 260,
   arenaLeftPadding: 520,
 };
+
+export const MUSIC = {
+  // Global base volume for background music (0..1).
+  // Sound effects can temporarily "duck" music below this level.
+  baseVolume: 0.8,
+  // Default ducking parameters (used when SFX plays).
+  duckTo: 0.35,
+  duckAttackMs: 60,
+  duckHoldMs: 120,
+  duckReleaseMs: 520,
+};

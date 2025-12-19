@@ -1,6 +1,7 @@
 /* global Phaser */
 
-import { PLATFORM } from '../game/constants.js';
+import { MUSIC, PLATFORM } from '../game/constants.js';
+import { playMusic, setMusicBaseVolume, stopMusic } from '../audio/AudioManager.js';
 
 const ASSET_ROOT = '/assets/processed/';
 
@@ -96,8 +97,21 @@ export class PreloadScene extends Phaser.Scene {
     this.load.image('fg:temple1', `${ASSET_ROOT}environment/background_parallax/foreground_elements/temple1.png`);
     // Intentionally not loading tiles_1.png
 
+    // Ground strip (environment/platform)
+    this.load.image('world:ground', `${ASSET_ROOT}environment/platform/ground.png`);
+    // Wall strip (environment/platform)
+    this.load.image('world:wall', `${ASSET_ROOT}environment/platform/wall.png`);
+
     // Load raw platform; we'll build a seam-safe, scaled tile texture in create().
     this.load.image('world:platform_raw', `${ASSET_ROOT}environment/platform/platform.png`);
+
+    // FX
+    this.load.image('fx:pearl', `${ASSET_ROOT}fx/pearl.png`);
+
+    // Audio
+    this.load.audio('music:intro', `${ASSET_ROOT}audio/intro.mp3`);
+    this.load.audio('music:ingame', `${ASSET_ROOT}audio/ingame.mp3`);
+    this.load.audio('music:win', `${ASSET_ROOT}audio/win.mp3`);
 
     // Minimal loading text
     const w = this.scale.width;
@@ -112,6 +126,13 @@ export class PreloadScene extends Phaser.Scene {
   }
 
   create() {
+    // Global base music volume (0..1). SFX will later duck below this.
+    setMusicBaseVolume(this, MUSIC.baseVolume);
+
+    // Start splash music while the DOM overlay is up.
+    // Note: the page already had a user gesture to begin the splash, so audio autoplay is typically allowed.
+    playMusic(this, 'music:intro');
+
     const dispatchDom = (name, detail) => {
       if (typeof window === 'undefined') return;
       if (detail !== undefined) {
@@ -126,6 +147,8 @@ export class PreloadScene extends Phaser.Scene {
     this._loadDone = false;
     this._onStartGame = () => {
       this._startRequested = true;
+      // Stop intro track right before entering gameplay; LevelScene will start ingame loop.
+      stopMusic(this, 'music:intro');
       if (this._loadDone) this.scene.start('LevelScene');
     };
     window.addEventListener('magna:start-game', this._onStartGame);

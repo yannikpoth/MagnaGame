@@ -7,6 +7,7 @@ import { BossWolmerath } from '../entities/BossWolmerath.js';
 import { MeleeHitbox } from '../combat/MeleeHitbox.js';
 import { SuperAttack } from '../combat/SuperAttack.js';
 import { Hud } from '../ui/Hud.js';
+import { duckMusic, playMusic, stopMusic } from '../audio/AudioManager.js';
 
 export class LevelScene extends Phaser.Scene {
   constructor() {
@@ -14,6 +15,18 @@ export class LevelScene extends Phaser.Scene {
   }
 
   create() {
+    // Music: ensure the ingame loop is active during gameplay.
+    playMusic(this, 'music:ingame');
+
+    // Safety: previous scene instances may have paused global systems (e.g. game over).
+    // Scene restart does not automatically resume the global animation manager.
+    try {
+      this.anims.resumeAll();
+      this.physics.world.resume();
+    } catch (_) {
+      // ignore
+    }
+
     this.worldWidth = LEVEL.width;
     this.worldHeight = GAME_HEIGHT;
 
@@ -36,6 +49,34 @@ export class LevelScene extends Phaser.Scene {
     const platformKey = this.textures.exists('world:platform_tile') ? 'world:platform_tile' : 'world:platform_raw';
     const platformSource = this.textures.get(platformKey)?.getSourceImage?.();
     const platformH = Math.round((platformSource?.height ?? 504) * 1);
+    const platformTopY = GROUND_Y - platformH;
+
+    // Ground (behind platform, behind props, same scroll speed).
+    // Only show the upper third of the source image for a "distant ground" feel.
+    const groundSource = this.textures.get('world:ground')?.getSourceImage?.();
+    const groundFullH = Math.max(1, groundSource?.height ?? 180);
+    const groundVisibleH = Math.max(1, Math.round(groundFullH / 3));
+    const groundOverlapIntoPlatform = Math.min(16, Math.round(groundVisibleH * 0.25));
+    // Nudge the ground upward a touch so it's clearly visible.
+    const groundNudgePx = -Math.round(groundVisibleH * 0.03);
+    this.groundImage = this.add
+      .tileSprite(0, platformTopY + groundOverlapIntoPlatform + groundNudgePx, this.worldWidth, groundVisibleH, 'world:ground')
+      .setOrigin(0, 1)
+      .setScrollFactor(1)
+      .setDepth(0.8);
+
+    // Wall (in front of all background/props, but still behind platform)
+    const wallSource = this.textures.get('world:wall')?.getSourceImage?.();
+    const wallH = Math.max(1, wallSource?.height ?? 120);
+    const wallScale = 0.25;
+    this.wallImage = this.add
+      // Widen the tileSprite, then scale down so we still cover the full world width.
+      .tileSprite(0, platformTopY - 1, this.worldWidth / wallScale, wallH, 'world:wall')
+      .setOrigin(0, 1)
+      .setScrollFactor(1)
+      .setDepth(1.9)
+      .setScale(wallScale);
+
     this.platformImage = this.add
       .tileSprite(0, GROUND_Y, this.worldWidth, platformH, platformKey)
       .setOrigin(0, 1)
@@ -50,26 +91,31 @@ export class LevelScene extends Phaser.Scene {
     // Place several props early & throughout the level so they are visible immediately.
     const decoDepth = 1; // behind platform
     const addProp = (key, x, y, scroll, scale = SCALE.parallax, alpha = 0.95) => {
-      this.add
+      const img = this.add
         .image(x, y, key)
         .setOrigin(0.5, 1)
         .setScrollFactor(scroll)
         .setScale(scale)
         .setAlpha(alpha)
         .setDepth(decoDepth);
+
+      // Quick variation: randomly mirror foreground props.
+      img.setFlipX(Math.random() < 0.5);
     };
 
     // Foreground prop tuning
     const statueScale = SCALE.parallax * 0.5; // half size
-    const statueY = 420; // move up a bit (origin is bottom)
-    const templeY = 400; // move up a bit (origin is bottom)
+    // Align props so their *bottom* sits 1px below the platform PNG top edge.
+    const propBottomY = platformTopY + 1;
+    const statueY = propBottomY;
+    const templeY = propBottomY;
 
     const statueXs = [900, 1900, 3100, 4600, 6100, 7600, 9200, 10900, 12600, 14300];
     for (let i = 0; i < statueXs.length; i += 1) {
-      addProp(i % 2 === 0 ? 'fg:statue1' : 'fg:statue2', statueXs[i], statueY, 0.75, statueScale);
+      addProp(i % 2 === 0 ? 'fg:statue1' : 'fg:statue2', statueXs[i], statueY, 1, statueScale);
     }
-    addProp('fg:temple1', 1400, templeY, 0.7, SCALE.parallax * 0.95);
-    addProp('fg:temple1', 8200, templeY, 0.7, SCALE.parallax * 0.95, 0.9);
+    addProp('fg:temple1', 1400, templeY, 1, SCALE.parallax * 0.95);
+    addProp('fg:temple1', 8200, templeY, 1, SCALE.parallax * 0.95, 0.9);
 
     // Ground collider (walkable line above the bottom piles)
     this.groundY = GROUND_Y - PLATFORM.floorFromBottomPx;
@@ -113,24 +159,13 @@ export class LevelScene extends Phaser.Scene {
     this.enemies = this.physics.add.group();
     this.physics.add.collider(this.enemies, this.ground);
 
-    this.physics.add.overlap(this.player, this.enemies, () => this._restart(), null, this);
+    this.physics.add.overlap(this.player, this.enemies, () => this._triggerGameOver('enemy'), null, this);
 
     // Boss
     this.boss = null;
     // Boss projectiles: keep as a plain container for cleanup, but wire physics overlaps
     // per-projectile to avoid Arcade Group side-effects.
     this.bossProjectiles = this.add.group();
-
-    // Boss projectile placeholder texture (pearl)
-    if (!this.textures.exists('fx:pearl')) {
-      const g = this.make.graphics({ x: 0, y: 0, add: false });
-      g.fillStyle(0xe5e7eb, 1);
-      g.fillCircle(16, 16, 12);
-      g.lineStyle(3, 0x111827, 1);
-      g.strokeCircle(16, 16, 12);
-      g.generateTexture('fx:pearl', 32, 32);
-      g.destroy();
-    }
 
     // HUD
     this.hud = new Hud(this);
@@ -165,6 +200,8 @@ export class LevelScene extends Phaser.Scene {
       this.physics.add.overlap(hb.gameObject, this.enemies, (_, enemy) => {
         if (!enemy?.active) return;
         if (!hb.tryHit(enemy)) return;
+        // Future SFX hook: duck music when hit SFX plays.
+        duckMusic(this, { key: 'music:ingame' });
         enemy.die({ via: 'melee' });
         this.player.addKills(1);
         this.cameras.main.shake(50, 0.005);
@@ -174,12 +211,16 @@ export class LevelScene extends Phaser.Scene {
         this.physics.add.overlap(hb.gameObject, this.boss, (_, boss) => {
           if (!boss?.active) return;
           if (!hb.tryHit(boss)) return;
+          // Future SFX hook: duck music when hit SFX plays.
+          duckMusic(this, { key: 'music:ingame' });
           boss.takeHit(1);
         });
       }
     };
 
     this.player.handlers.onSuper = (origin) => {
+      // Future SFX hook: duck music when super SFX plays.
+      duckMusic(this, { key: 'music:ingame' });
       SuperAttack.activate(this, origin, { enemies: this.enemies, boss: this.boss });
     };
 
@@ -191,6 +232,41 @@ export class LevelScene extends Phaser.Scene {
     // Boss intro modal (shown right before boss spawns)
     this._bossIntroOpen = false;
     this._bossIntroUi = null;
+
+    // Game over overlay
+    this._gameOverOpen = false;
+    this._gameOverUi = null;
+    this._gameOverArmed = false;
+    this._spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+
+    // Ensure paused global systems are restored if the scene is restarted/destroyed
+    // while a game-over overlay is active.
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      try {
+        this.anims.resumeAll();
+        this.physics.world.resume();
+      } catch (_) {
+        // ignore
+      }
+      try {
+        if (this._gameOverUi) {
+          this._gameOverUi.overlay?.destroy();
+          this._gameOverUi.vignette?.destroy();
+          this._gameOverUi.scanlines?.destroy();
+          this._gameOverUi.titleShadow?.destroy();
+          this._gameOverUi.titleCyan?.destroy();
+          this._gameOverUi.titleMagenta?.destroy();
+          this._gameOverUi.title?.destroy();
+          this._gameOverUi.titleHi?.destroy();
+          this._gameOverUi.hint?.destroy();
+          this._gameOverUi.hint2?.destroy();
+        }
+      } finally {
+        this._gameOverUi = null;
+        this._gameOverOpen = false;
+        this._gameOverArmed = false;
+      }
+    });
   }
 
   update(time, delta = 16) {
@@ -203,6 +279,23 @@ export class LevelScene extends Phaser.Scene {
     // In Phaser, increasing tilePositionX shifts the texture left, so we use +scrollX.
     this.bgSky.tilePositionX = Math.floor(cam.scrollX * 0.15);
 
+    // Game over overlay: freeze gameplay updates (render still runs).
+    if (this._gameOverOpen) {
+      // Require releasing SPACE before we accept a restart press.
+      if (!this._gameOverArmed && this._spaceKey?.isUp) this._gameOverArmed = true;
+      if (this._gameOverArmed && Phaser.Input.Keyboard.JustDown(this._spaceKey)) {
+        // Important: anims.pauseAll() affects the global animation manager; resume before restart.
+        try {
+          this.anims.resumeAll();
+          this.physics.world.resume();
+        } catch (_) {
+          // ignore
+        }
+        this.scene.restart();
+      }
+      return;
+    }
+
     // If a modal is open, freeze gameplay updates (render still runs).
     if (this._bossIntroOpen) return;
 
@@ -211,7 +304,7 @@ export class LevelScene extends Phaser.Scene {
 
     // Fall death
     if (this.player.y > GAME_HEIGHT + 300) {
-      this._restart();
+      this._triggerGameOver('fall');
       return;
     }
 
@@ -292,8 +385,14 @@ export class LevelScene extends Phaser.Scene {
         arenaLeft,
         arenaRight,
         onPearl: (spec) => {
-          // Placeholder pearl: a rolling "bowling ball" projectile along the ground.
-          const r = 12;
+          // Pearl: rolling projectile along the ground.
+          // Keep gameplay sizing stable by scaling the sprite to ~24px diameter.
+          const desiredDiameter = 24;
+          const tex = this.textures.get('fx:pearl');
+          const src = tex?.getSourceImage?.();
+          const baseDiameter = Math.max(1, Math.min(src?.width ?? desiredDiameter, src?.height ?? desiredDiameter));
+          const scale = desiredDiameter / baseDiameter;
+          const r = desiredDiameter / 2;
           const dir = spec.dir >= 0 ? 1 : -1;
 
           // IMPORTANT:
@@ -301,6 +400,7 @@ export class LevelScene extends Phaser.Scene {
           // re-entrancy issues on spawn. We'll move it manually and do a simple hit test.
           const pearl = this.add.image(spec.x, this.groundTopY - r, 'fx:pearl').setDepth(7);
           pearl.setOrigin(0.5, 0.5);
+          pearl.setScale(scale);
           pearl.rotation = 0;
           pearl._vx = dir * 340; // px/s
           pearl._r = r;
@@ -316,6 +416,9 @@ export class LevelScene extends Phaser.Scene {
       });
 
       if (this.boss.hp <= 0) {
+        // Stop gameplay music when we leave the level.
+        // (Win fanfare/track can be added later in VictoryScene.)
+        stopMusic(this, 'music:ingame');
         this.scene.start('VictoryScene', {
           message: 'Wolmerath is defeated. The storm temple belongs to rock again.',
         });
@@ -333,8 +436,14 @@ export class LevelScene extends Phaser.Scene {
         if (!p?.active) continue;
         // Move + spin
         const vx = typeof p._vx === 'number' ? p._vx : 0;
-        p.x += vx * dt;
-        p.rotation += (vx * dt) / 30;
+        const dx = vx * dt;
+        p.x += dx;
+
+        // Rolling rotation: angle (radians) ~= distance / radius.
+        // Phaser's positive rotation appears clockwise (screen y is down),
+        // so moving left (dx < 0) naturally yields counter-clockwise rotation.
+        const r = typeof p._r === 'number' ? Math.max(1, p._r) : Math.max(1, (p.displayWidth ?? 24) / 2);
+        p.rotation += dx / r;
 
         // Despawn behind camera
         if (p.x < killX) {
@@ -356,7 +465,7 @@ export class LevelScene extends Phaser.Scene {
 
           const overlap = px0 < bx1 && px1 > bx0 && py0 < by1 && py1 > by0;
           if (overlap) {
-            this._restart();
+            this._triggerGameOver('pearl');
             return;
           }
         }
@@ -406,7 +515,7 @@ export class LevelScene extends Phaser.Scene {
     this._snapBodyBottomToGround(this.boss);
 
     this.physics.add.collider(this.boss, this.ground);
-    this.physics.add.overlap(this.player, this.boss, () => this._restart());
+    this.physics.add.overlap(this.player, this.boss, () => this._triggerGameOver('boss'));
   }
 
   _openBossIntroModal() {
@@ -529,7 +638,248 @@ export class LevelScene extends Phaser.Scene {
     this._spawnBoss();
   }
 
-  _restart() {
-    this.scene.restart();
+  /**
+   * @param {'enemy' | 'boss' | 'pearl' | 'fall' | 'unknown'} reason
+   */
+  _triggerGameOver(reason = 'unknown') {
+    if (this._gameOverOpen) return;
+    if (this._bossIntroOpen) return; // modal owns input; ignore edge cases
+    this._gameOverOpen = true;
+    this._gameOverArmed = false;
+
+    // Stop movement immediately.
+    try {
+      if (this.player?.body) this.player.body.setVelocity(0, 0);
+      for (const e of this.enemies?.getChildren?.() ?? []) {
+        if (e?.body?.setVelocity) e.body.setVelocity(0, 0);
+      }
+      if (this.boss?.body?.setVelocity) this.boss.body.setVelocity(0, 0);
+    } catch (_) {
+      // ignore
+    }
+
+    // Pause gameplay systems (render still runs).
+    try {
+      this.physics.world.pause();
+      this.anims.pauseAll();
+    } catch (_) {
+      // ignore
+    }
+
+    // Prevent buffered jump from instantly restarting.
+    try {
+      this.input.keyboard.resetKeys();
+    } catch (_) {
+      // ignore
+    }
+
+    // Build "impressive" code-only retro overlay.
+    const uiDepth = 4000;
+
+    // Dark overlay + subtle vignette
+    const overlay = this.add
+      .rectangle(0, 0, this.scale.width, this.scale.height, 0x000000, 0.55)
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setDepth(uiDepth);
+
+    const vignette = this.add.graphics().setScrollFactor(0).setDepth(uiDepth + 1);
+    const w = this.scale.width;
+    const h = this.scale.height;
+    // Fake vignette by stacking translucent rect borders.
+    vignette.fillStyle(0x000000, 0.18);
+    for (let i = 0; i < 10; i += 1) {
+      vignette.fillRect(i * 10, i * 8, w - i * 20, 16);
+      vignette.fillRect(i * 10, h - i * 8 - 16, w - i * 20, 16);
+      vignette.fillRect(i * 10, i * 8, 16, h - i * 16);
+      vignette.fillRect(w - i * 10 - 16, i * 8, 16, h - i * 16);
+    }
+
+    // Scanlines (generated texture, no imported PNG)
+    if (!this.textures.exists('fx:scanlines')) {
+      const g = this.make.graphics({ x: 0, y: 0, add: false });
+      g.clear();
+      g.fillStyle(0xffffff, 0.14);
+      g.fillRect(0, 0, 4, 1);
+      g.fillStyle(0xffffff, 0.04);
+      g.fillRect(0, 2, 4, 1);
+      g.generateTexture('fx:scanlines', 4, 4);
+      g.destroy();
+    }
+
+    const scanlines = this.add
+      .tileSprite(0, 0, this.scale.width, this.scale.height, 'fx:scanlines')
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setAlpha(0.22)
+      .setBlendMode(Phaser.BlendModes.MULTIPLY)
+      .setDepth(uiDepth + 2);
+
+    // Text stack (shadow + chroma + main + highlight) to feel "arcade"
+    const cx = Math.round(this.scale.width / 2);
+    const cy = Math.round(this.scale.height / 2);
+
+    const baseStyle = {
+      fontFamily: 'monospace',
+      fontStyle: 'bold',
+      fontSize: '34px', // keep small-ish, then scale up for pixel feel
+      color: '#ff1b2d',
+      align: 'center',
+      letterSpacing: 6,
+      stroke: '#09090b',
+      strokeThickness: 10,
+    };
+
+    const titleShadow = this.add
+      .text(cx + 6, cy - 84 + 7, 'GAME  OVER', { ...baseStyle, color: '#7f0b12' })
+      .setOrigin(0.5, 0.5)
+      .setScrollFactor(0)
+      .setScale(3.0)
+      .setAlpha(0.85)
+      .setDepth(uiDepth + 3);
+
+    const titleCyan = this.add
+      .text(cx - 3, cy - 84, 'GAME  OVER', { ...baseStyle, color: '#00e5ff', stroke: '#001018', strokeThickness: 8 })
+      .setOrigin(0.5, 0.5)
+      .setScrollFactor(0)
+      .setScale(3.0)
+      .setAlpha(0.22)
+      .setDepth(uiDepth + 4);
+
+    const titleMagenta = this.add
+      .text(cx + 3, cy - 84, 'GAME  OVER', { ...baseStyle, color: '#ff2dff', stroke: '#180014', strokeThickness: 8 })
+      .setOrigin(0.5, 0.5)
+      .setScrollFactor(0)
+      .setScale(3.0)
+      .setAlpha(0.18)
+      .setDepth(uiDepth + 4);
+
+    const title = this.add
+      .text(cx, cy - 84, 'GAME  OVER', baseStyle)
+      .setOrigin(0.5, 0.5)
+      .setScrollFactor(0)
+      .setScale(3.0)
+      .setDepth(uiDepth + 5);
+
+    const titleHi = this.add
+      .text(cx, cy - 84, 'GAME  OVER', {
+        ...baseStyle,
+        color: '#ffe4e6',
+        stroke: '#ffffff',
+        strokeThickness: 0,
+      })
+      .setOrigin(0.5, 0.5)
+      .setScrollFactor(0)
+      .setScale(3.0)
+      .setAlpha(0.1)
+      .setDepth(uiDepth + 6);
+
+    const hint = this.add
+      .text(cx, cy + 90, 'Press SPACE to restart', {
+        fontFamily: 'monospace',
+        fontStyle: 'bold',
+        fontSize: '16px',
+        color: '#ffffff',
+        align: 'center',
+        stroke: '#09090b',
+        strokeThickness: 6,
+        letterSpacing: 1,
+      })
+      .setOrigin(0.5, 0.5)
+      .setScrollFactor(0)
+      .setScale(2.4)
+      .setDepth(uiDepth + 6);
+
+    const hint2 = this.add
+      .text(cx, cy + 90, 'Press SPACE to restart', {
+        fontFamily: 'monospace',
+        fontStyle: 'bold',
+        fontSize: '16px',
+        color: '#ff1b2d',
+        align: 'center',
+        letterSpacing: 1,
+      })
+      .setOrigin(0.5, 0.5)
+      .setScrollFactor(0)
+      .setScale(2.4)
+      .setAlpha(0.18)
+      .setDepth(uiDepth + 5);
+
+    // Animations: bob + glitch jitter + scanline drift + hint pulse
+    this.tweens.add({
+      targets: [titleShadow, titleCyan, titleMagenta, title, titleHi],
+      y: '+=10',
+      duration: 1100,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.inOut',
+    });
+
+    this.tweens.add({
+      targets: scanlines,
+      tilePositionY: 64,
+      duration: 1200,
+      repeat: -1,
+      ease: 'Linear',
+    });
+
+    this.tweens.add({
+      targets: [hint, hint2],
+      alpha: { from: 0.55, to: 1 },
+      duration: 520,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.inOut',
+    });
+
+    // Glitch: tiny periodic chroma offsets
+    this.tweens.add({
+      targets: titleCyan,
+      x: cx - 5,
+      duration: 80,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Linear',
+      repeatDelay: 220,
+    });
+    this.tweens.add({
+      targets: titleMagenta,
+      x: cx + 5,
+      duration: 80,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Linear',
+      repeatDelay: 260,
+    });
+    this.tweens.add({
+      targets: titleHi,
+      alpha: { from: 0.05, to: 0.18 },
+      duration: 140,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Linear',
+      repeatDelay: 340,
+    });
+
+    // Tiny "impact" on death
+    try {
+      this.cameras.main.shake(180, 0.01);
+    } catch (_) {
+      // ignore
+    }
+
+    this._gameOverUi = {
+      overlay,
+      vignette,
+      scanlines,
+      titleShadow,
+      titleCyan,
+      titleMagenta,
+      title,
+      titleHi,
+      hint,
+      hint2,
+      reason,
+    };
   }
 }
