@@ -2,7 +2,8 @@
   "version": 1,
   "defaults": {
     "removeWhite": {
-      "fuzzPercent": 5
+      "fuzzPercent": 5,
+      "edgeBleedPx": 0
     },
     "pad": {
       "extraPaddingPx": 4

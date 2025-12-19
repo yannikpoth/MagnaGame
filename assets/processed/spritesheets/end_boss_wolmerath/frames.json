@@ -1,7 +1,7 @@
 {
   "characterId": "end_boss_wolmerath",
-  "frameWidth": 784,
-  "frameHeight": 488,
+  "frameWidth": 792,
+  "frameHeight": 496,
   "animations": {
     "walking": {
       "file": "spritesheets/end_boss_wolmerath/walking.png",

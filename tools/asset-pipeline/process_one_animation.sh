@@ -107,6 +107,7 @@ PY
 )"
 
 fuzz="$(json_get "$cfg" 'cfg["defaults"]["removeWhite"]["fuzzPercent"]')"
+edge_bleed_px="$(json_get "$cfg" 'cfg["defaults"]["removeWhite"].get("edgeBleedPx", 0)')"
 
 src_abs="$root/$src_mp4"
 if [[ ! -f "$src_abs" ]]; then
@@ -125,11 +126,12 @@ fi
 echo "Removing white background (fuzz=${fuzz}%)"
 magick mogrify -fuzz "${fuzz}%" -transparent white "$out_dir"/frame_*.png
 
-echo "Fixing edge halos (alpha bleed)"
-bleed_px=2
-for f in "$out_dir"/frame_*.png; do
-  alpha_bleed_png_inplace "$f" "$bleed_px"
-done
+if [[ "${edge_bleed_px}" =~ ^[0-9]+$ ]] && [[ "${edge_bleed_px}" -gt 0 ]]; then
+  echo "Fixing edge halos (alpha bleed px=${edge_bleed_px})"
+  for f in "$out_dir"/frame_*.png; do
+    alpha_bleed_png_inplace "$f" "$edge_bleed_px"
+  done
+fi
 
 echo "Trimming to content"
 magick mogrify -trim +repage "$out_dir"/frame_*.png

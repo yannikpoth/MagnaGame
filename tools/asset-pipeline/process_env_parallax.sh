@@ -87,6 +87,7 @@ process_png() {
   remove_enabled="$(read_setting "$section" "$in_rel" 'deep_get(settings, ["removeWhite","enabled"])')"
   fuzz="$(read_setting "$section" "$in_rel" 'deep_get(settings, ["removeWhite","fuzzPercent"]) or deep_get(cfg, ["defaults","removeWhite","fuzzPercent"])')"
   halo_fix="$(read_setting "$section" "$in_rel" 'deep_get(settings, ["removeWhite","haloFix"])')"
+  edge_bleed_px="$(read_setting "$section" "$in_rel" 'deep_get(settings, ["removeWhite","edgeBleedPx"]) or 0')"
   trim_enabled="$(read_setting "$section" "$in_rel" 'deep_get(settings, ["trim","enabled"])')"
   padding_px="$(read_setting "$section" "$in_rel" 'settings.get("paddingPx", deep_get(cfg, ["defaults","paddingPx"]))')"
 
@@ -99,9 +100,11 @@ process_png() {
     magick "$in_abs" -alpha set "$out_abs"
   fi
 
-  # Edge-color bleed to prevent white halo shimmer on scaled rendering.
+  # Optional edge-color bleed to prevent white halo shimmer on scaled rendering.
   if [[ "$remove_enabled" == "True" || "$remove_enabled" == "true" || "$remove_enabled" == "1" ]]; then
-    alpha_bleed_png_inplace "$out_abs" 2
+    if [[ "${edge_bleed_px}" =~ ^[0-9]+$ ]] && [[ "${edge_bleed_px}" -gt 0 ]]; then
+      alpha_bleed_png_inplace "$out_abs" "$edge_bleed_px"
+    fi
   fi
 
   if [[ "$halo_fix" == "True" || "$halo_fix" == "true" || "$halo_fix" == "1" ]]; then
