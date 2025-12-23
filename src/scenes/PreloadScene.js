@@ -108,9 +108,16 @@ export class PreloadScene extends Phaser.Scene {
 
     // FX
     this.load.image('fx:pearl', `${ASSET_ROOT}fx/pearl.png`);
+    this.load.image('fx:laser', `${ASSET_ROOT}fx/laser.png`);
 
     // UI
     this.load.image('ui:rule_board', `${ASSET_ROOT}ui/rule_board.png`);
+    this.load.image('ui:boss_hp_meter', `${ASSET_ROOT}ui/boss_hp_meter.png`);
+    this.load.image('ui:super_meter:0', `${ASSET_ROOT}ui/super_meter/state0.png`);
+    this.load.image('ui:super_meter:1', `${ASSET_ROOT}ui/super_meter/state1.png`);
+    this.load.image('ui:super_meter:2', `${ASSET_ROOT}ui/super_meter/state2.png`);
+    this.load.image('ui:super_meter:3', `${ASSET_ROOT}ui/super_meter/state3.png`);
+    this.load.image('ui:super_meter:4', `${ASSET_ROOT}ui/super_meter/state4.png`);
 
     // Audio
     // Intro is loaded as early as BootScene; avoid re-loading if already present.
