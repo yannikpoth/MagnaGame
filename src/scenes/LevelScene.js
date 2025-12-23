@@ -7,7 +7,7 @@ import { BossWolmerath } from '../entities/BossWolmerath.js';
 import { MeleeHitbox } from '../combat/MeleeHitbox.js';
 import { SuperAttack } from '../combat/SuperAttack.js';
 import { Hud } from '../ui/Hud.js';
-import { duckMusic, playMusic, stopMusic } from '../audio/AudioManager.js';
+import { playMusic, playSfx, stopMusic } from '../audio/AudioManager.js';
 
 export class LevelScene extends Phaser.Scene {
   constructor() {
@@ -16,7 +16,19 @@ export class LevelScene extends Phaser.Scene {
 
   create() {
     // Music: ensure the ingame loop is active during gameplay.
-    playMusic(this, 'music:ingame');
+    // When entering gameplay from the splash start button, we delay the ingame music slightly
+    // so the "start" SFX reads clearly.
+    const startDelayMs = this.registry.get('audio:ingameStartDelayMs');
+    const delay = typeof startDelayMs === 'number' ? Math.max(0, startDelayMs) : 0;
+    this.registry.set('audio:ingameStartDelayMs', 0);
+    if (delay > 0) {
+      this.time.delayedCall(delay, () => {
+        if (!this.sys?.isActive()) return;
+        playMusic(this, 'music:ingame', { fadeInMs: 0 });
+      });
+    } else {
+      playMusic(this, 'music:ingame', { fadeInMs: 0 });
+    }
 
     // Safety: previous scene instances may have paused global systems (e.g. game over).
     // Scene restart does not automatically resume the global animation manager.
@@ -171,6 +183,11 @@ export class LevelScene extends Phaser.Scene {
     this.hud = new Hud(this);
 
     // Combat hooks
+    this.player.handlers.onMeleeStart = () => {
+      // Player attack sound (variation) - play immediately on key press.
+      const n = Phaser.Math.Between(1, 3);
+      playSfx(this, `sfx:slap${n}`, { duck: true, duckKey: 'music:ingame', volume: 1 });
+    };
     this.player.handlers.onMelee = (hitboxSpec) => {
       const hb = new MeleeHitbox(this, hitboxSpec);
 
@@ -200,8 +217,6 @@ export class LevelScene extends Phaser.Scene {
       this.physics.add.overlap(hb.gameObject, this.enemies, (_, enemy) => {
         if (!enemy?.active) return;
         if (!hb.tryHit(enemy)) return;
-        // Future SFX hook: duck music when hit SFX plays.
-        duckMusic(this, { key: 'music:ingame' });
         enemy.die({ via: 'melee' });
         this.player.addKills(1);
         this.cameras.main.shake(50, 0.005);
@@ -211,16 +226,13 @@ export class LevelScene extends Phaser.Scene {
         this.physics.add.overlap(hb.gameObject, this.boss, (_, boss) => {
           if (!boss?.active) return;
           if (!hb.tryHit(boss)) return;
-          // Future SFX hook: duck music when hit SFX plays.
-          duckMusic(this, { key: 'music:ingame' });
           boss.takeHit(1);
         });
       }
     };
 
     this.player.handlers.onSuper = (origin) => {
-      // Future SFX hook: duck music when super SFX plays.
-      duckMusic(this, { key: 'music:ingame' });
+      playSfx(this, 'sfx:shot', { duck: true, duckKey: 'music:ingame', volume: 1 });
       SuperAttack.activate(this, origin, { enemies: this.enemies, boss: this.boss });
     };
 
@@ -233,11 +245,20 @@ export class LevelScene extends Phaser.Scene {
     this._bossIntroOpen = false;
     this._bossIntroUi = null;
 
+    // Rule board modal (shown once at level start)
+    this._rulesBoardOpen = false;
+    this._rulesBoardUi = null;
+    this._rulesBoardArmed = false;
+
     // Game over overlay
     this._gameOverOpen = false;
     this._gameOverUi = null;
     this._gameOverArmed = false;
     this._spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+
+    // Show rule board immediately after the splash → gameplay transition.
+    // Important: require releasing SPACE first, otherwise "Space to start" could dismiss instantly.
+    this._openRulesBoardModal();
 
     // Ensure paused global systems are restored if the scene is restarted/destroyed
     // while a game-over overlay is active.
@@ -247,6 +268,17 @@ export class LevelScene extends Phaser.Scene {
         this.physics.world.resume();
       } catch (_) {
         // ignore
+      }
+      try {
+        if (this._rulesBoardUi) {
+          this._rulesBoardUi.overlay?.destroy();
+          this._rulesBoardUi.board?.destroy();
+          this._rulesBoardUi.hint?.destroy();
+        }
+      } finally {
+        this._rulesBoardUi = null;
+        this._rulesBoardOpen = false;
+        this._rulesBoardArmed = false;
       }
       try {
         if (this._gameOverUi) {
@@ -279,6 +311,15 @@ export class LevelScene extends Phaser.Scene {
     // In Phaser, increasing tilePositionX shifts the texture left, so we use +scrollX.
     this.bgSky.tilePositionX = Math.floor(cam.scrollX * 0.15);
 
+    // Rule board: freeze gameplay updates (render still runs).
+    if (this._rulesBoardOpen) {
+      if (!this._rulesBoardArmed && this._spaceKey?.isUp) this._rulesBoardArmed = true;
+      if (this._rulesBoardArmed && Phaser.Input.Keyboard.JustDown(this._spaceKey)) {
+        this._closeRulesBoardModal();
+      }
+      return;
+    }
+
     // Game over overlay: freeze gameplay updates (render still runs).
     if (this._gameOverOpen) {
       // Require releasing SPACE before we accept a restart press.
@@ -298,6 +339,16 @@ export class LevelScene extends Phaser.Scene {
 
     // If a modal is open, freeze gameplay updates (render still runs).
     if (this._bossIntroOpen) return;
+
+    // Win condition:
+    // Boss disables itself (active=false) on death, so don't gate this behind `boss.active`.
+    if (this.boss && this.boss.hp <= 0) {
+      stopMusic(this, 'music:ingame');
+      this.scene.start('VictoryScene', {
+        message: 'Wolmerath is defeated. The storm temple belongs to rock again.',
+      });
+      return;
+    }
 
     // Player
     if (this.player?.active) this.player.update(time);
@@ -331,6 +382,7 @@ export class LevelScene extends Phaser.Scene {
       let rightmostX = -Infinity;
       for (const e of this.enemies.getChildren()) {
         if (!e?.active) continue;
+        if (typeof e.isDead === 'function' && e.isDead()) continue;
         if (e.x > rightmostX) {
           rightmostX = e.x;
           rightmost = e;
@@ -358,14 +410,18 @@ export class LevelScene extends Phaser.Scene {
     // Cleanup enemies behind camera
     const killX = this.cameras.main.scrollX - 300;
     for (const e of this.enemies.getChildren()) {
-      if (e?.active && e.x < killX) e.die({ via: 'despawn' });
+      if (!e?.active) continue;
+      if (typeof e.isDead === 'function' && e.isDead()) continue;
+      if (e.x < killX) e.die({ via: 'despawn' });
     }
 
     // Boss trigger: spawn when ALL capped enemies are dead.
     if (!this._bossTriggered && this._enemiesSpawned >= ENEMY.maxCount) {
       let living = 0;
       for (const e of this.enemies.getChildren()) {
-        if (e?.active) living += 1;
+        if (!e?.active) continue;
+        if (typeof e.isDead === 'function' && e.isDead()) continue;
+        living += 1;
       }
       if (living === 0) {
         // Stop spawns immediately, show boss warning, then spawn boss on dismiss.
@@ -384,6 +440,16 @@ export class LevelScene extends Phaser.Scene {
         player: this.player,
         arenaLeft,
         arenaRight,
+        onAttack: () => {
+          playSfx(this, 'sfx:endboss_attack', {
+            duck: true,
+            duckKey: 'music:ingame',
+            volume: 1,
+            stopPrevious: true,
+            fadeOutAfterMs: 4000,
+            fadeOutMs: 250,
+          });
+        },
         onPearl: (spec) => {
           // Pearl: rolling projectile along the ground.
           // Keep gameplay sizing stable by scaling the sprite to ~24px diameter.
@@ -599,6 +665,115 @@ export class LevelScene extends Phaser.Scene {
     this.input.keyboard.once('keydown-SPACE', () => {
       this._closeBossIntroModal();
     });
+  }
+
+  _openRulesBoardModal() {
+    if (this._rulesBoardOpen) return;
+    this._rulesBoardOpen = true;
+    this._rulesBoardArmed = false;
+
+    // Freeze physics + animations so the "press SPACE" doesn't turn into a jump.
+    try {
+      if (this.player?.body) this.player.body.setVelocity(0, 0);
+      this.physics.world.pause();
+      this.anims.pauseAll();
+    } catch (_) {
+      // ignore
+    }
+
+    const uiDepth = 2600;
+
+    const overlay = this.add
+      .rectangle(0, 0, this.scale.width, this.scale.height, 0x000000, 0.6)
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setDepth(uiDepth);
+
+    const tex = this.textures.get('ui:rule_board');
+    const src = tex?.getSourceImage?.();
+    const bw = Math.max(1, src?.width ?? 1024);
+    const bh = Math.max(1, src?.height ?? 768);
+
+    const marginX = 40;
+    const marginY = 70;
+    const maxW = Math.max(1, this.scale.width - marginX * 2);
+    const maxH = Math.max(1, this.scale.height - marginY * 2);
+    const scale = Math.min(maxW / bw, maxH / bh, 1);
+
+    const board = this.add
+      .image(Math.round(this.scale.width / 2), Math.round(this.scale.height / 2) - 8, 'ui:rule_board')
+      .setScrollFactor(0)
+      .setDepth(uiDepth + 1)
+      .setScale(scale);
+
+    const hint = this.add
+      .text(Math.round(this.scale.width / 2), this.scale.height - 22, 'Press SPACE to continue', {
+        fontFamily: 'monospace',
+        fontStyle: 'bold',
+        fontSize: '16px',
+        color: '#ffffff',
+        align: 'center',
+        stroke: '#09090b',
+        strokeThickness: 6,
+        letterSpacing: 1,
+      })
+      .setOrigin(0.5, 1)
+      .setScrollFactor(0)
+      .setDepth(uiDepth + 2)
+      .setAlpha(0.95);
+
+    // Subtle pulse to draw attention.
+    this.tweens.add({
+      targets: hint,
+      alpha: { from: 0.55, to: 1 },
+      duration: 520,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.inOut',
+    });
+
+    this._rulesBoardUi = { overlay, board, hint };
+
+    // Prevent buffered jump from instantly firing when the modal closes.
+    try {
+      this.input.keyboard.resetKeys();
+      const spaceKey = this.player?.keys?.cursors?.space;
+      if (spaceKey?.reset) spaceKey.reset();
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  _closeRulesBoardModal() {
+    if (!this._rulesBoardOpen) return;
+    this._rulesBoardOpen = false;
+    this._rulesBoardArmed = false;
+
+    try {
+      if (this._rulesBoardUi) {
+        this._rulesBoardUi.overlay?.destroy();
+        this._rulesBoardUi.board?.destroy();
+        this._rulesBoardUi.hint?.destroy();
+      }
+    } finally {
+      this._rulesBoardUi = null;
+    }
+
+    // Prevent the dismiss press from being interpreted as a buffered jump.
+    try {
+      this.input.keyboard.resetKeys();
+      const spaceKey = this.player?.keys?.cursors?.space;
+      if (spaceKey?.reset) spaceKey.reset();
+    } catch (_) {
+      // ignore
+    }
+
+    try {
+      this.anims.resumeAll();
+      this.physics.world.resume();
+    } catch (_) {
+      // ignore
+    }
   }
 
   _closeBossIntroModal() {

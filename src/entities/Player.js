@@ -30,7 +30,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     /** @type {boolean} */
     this._isAttacking = false;
 
-    /** @type {{ onMelee?: (hitboxSpec: any) => void, onSuper?: (origin: any) => void }} */
+    /** @type {{ onMeleeStart?: () => void, onMelee?: (hitboxSpec: any) => void, onSuper?: (origin: any) => void }} */
     this.handlers = {};
 
     this.keys = {
@@ -137,6 +137,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       this._nextAttackAt = time + PLAYER.attackCooldownMs;
       this._isAttacking = true;
       this.play('player:attack', true);
+      if (this.handlers.onMeleeStart) this.handlers.onMeleeStart();
 
       // Spawn the hitbox after a short windup so it matches the swing pose.
       const facingAtPress = this.facing;

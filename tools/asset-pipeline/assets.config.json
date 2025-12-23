@@ -1,19 +1,10 @@
 {
   "version": 1,
   "defaults": {
-    "removeWhite": {
-      "fuzzPercent": 5,
-      "edgeBleedPx": 0
-    },
-    "pad": {
-      "extraPaddingPx": 4
-    },
-    "rounding": {
-      "multiple": 8
-    },
-    "ffmpeg": {
-      "fps": 8
-    }
+    "removeWhite": { "fuzzPercent": 5, "edgeBleedPx": 0 },
+    "pad": { "extraPaddingPx": 4 },
+    "rounding": { "multiple": 8 },
+    "ffmpeg": { "fps": 8 }
   },
   "characters": [
     {
@@ -26,8 +17,13 @@
     },
     {
       "characterId": "enemy_cyberbully",
+      "animations": [{ "name": "walking", "srcMp4": "assets/raw/enemy/cyberbully_walking.mp4", "fps": 8 }]
+    },
+    {
+      "characterId": "enemy_cyberbully_hit",
       "animations": [
-        { "name": "walking", "srcMp4": "assets/raw/enemy/cyberbully_walking.mp4", "fps": 8 }
+        { "name": "hit1", "srcMp4": "assets/raw/enemy/cyberbully_hit1.mp4", "fps": 8 },
+        { "name": "hit2", "srcMp4": "assets/raw/enemy/cyberbully_hit2.mp4", "fps": 8 }
       ]
     },
     {

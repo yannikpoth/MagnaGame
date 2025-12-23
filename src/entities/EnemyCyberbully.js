@@ -15,6 +15,12 @@ export class EnemyCyberbully extends Phaser.Physics.Arcade.Sprite {
     this.setScale(SCALE.enemy);
 
     this._dead = false;
+    this._deathCleanupTimer = null;
+  }
+
+  /** @returns {boolean} */
+  isDead() {
+    return this._dead;
   }
 
   /**
@@ -52,11 +58,72 @@ export class EnemyCyberbully extends Phaser.Physics.Arcade.Sprite {
     this.setCollideWorldBounds(false);
   }
 
-  die() {
+  /**
+   * @param {{via?: 'melee' | 'super' | 'despawn' | string} | undefined} opts
+   */
+  die(opts = {}) {
     if (this._dead) return;
     this._dead = true;
 
-    this.disableBody(true, true);
-    this.scene.time.delayedCall(50, () => this.destroy());
+    const via = opts?.via ?? 'unknown';
+
+    // Despawn cleanup: remove immediately (no animation).
+    if (via === 'despawn') {
+      this.disableBody(true, true);
+      this.scene.time.delayedCall(1, () => this.destroy());
+      return;
+    }
+
+    // Stop physics interactions, but keep the sprite visible for the death animation.
+    try {
+      if (this.body) {
+        this.body.setVelocity(0, 0);
+        this.body.enable = false;
+      }
+    } catch (_) {
+      // ignore
+    }
+
+    // Render behind the player from the moment the death animation starts.
+    const playerDepth = this.scene?.player?.depth;
+    if (typeof playerDepth === 'number') this.setDepth(playerDepth - 1);
+    else this.setDepth(this.depth - 1);
+
+    // Death presentation:
+    // - zoom out (scale down) for 400ms
+    // - then fade out for 600ms
+    // - enemy must be gone after 1000ms total
+    const baseScaleX = this.scaleX || 1;
+    const baseScaleY = this.scaleY || 1;
+    this.setAlpha(1);
+
+    this.scene.tweens.add({
+      targets: this,
+      scaleX: baseScaleX * 0.72,
+      scaleY: baseScaleY * 0.72,
+      duration: 400,
+      ease: 'Quad.Out',
+    });
+
+    this.scene.tweens.add({
+      targets: this,
+      alpha: 0,
+      delay: 400,
+      duration: 600,
+      ease: 'Linear',
+    });
+
+    // Random death variant.
+    const animKey = Phaser.Math.Between(1, 2) === 1 ? 'enemyhit:hit1' : 'enemyhit:hit2';
+
+    if (this.scene?.anims?.exists?.(animKey)) {
+      this.play(animKey);
+    }
+
+    // Ensure cleanup happens exactly after the 1s death presentation window.
+    this._deathCleanupTimer = this.scene.time.delayedCall(1000, () => {
+      if (!this.scene?.sys?.isActive()) return;
+      this.destroy();
+    });
   }
 }

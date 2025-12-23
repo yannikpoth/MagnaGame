@@ -1,0 +1,17 @@
+{
+  "characterId": "enemy_cyberbully_hit",
+  "frameWidth": 536,
+  "frameHeight": 576,
+  "animations": {
+    "hit1": {
+      "file": "spritesheets/enemy_cyberbully_hit/hit1.png",
+      "fps": 8,
+      "frameCount": 32
+    },
+    "hit2": {
+      "file": "spritesheets/enemy_cyberbully_hit/hit2.png",
+      "fps": 8,
+      "frameCount": 32
+    }
+  }
+}

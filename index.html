@@ -124,6 +124,78 @@
           opacity: 0.35;
         }
       }
+
+      /* --- Win overlay (DOM, above Phaser canvas) --- */
+      #win-screen {
+        z-index: 30;
+        background: #000;
+      }
+      #win-screen.is-visible {
+        display: flex;
+      }
+      #win-video {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        /* Fit the video to screen width/height without cropping (black bars ok). */
+        object-fit: contain;
+        filter: contrast(1.08) saturate(1.1);
+      }
+      /* CRT-ish scanlines + vignette (pure CSS) */
+      #win-screen::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: repeating-linear-gradient(
+          to bottom,
+          rgba(0, 0, 0, 0.0) 0px,
+          rgba(0, 0, 0, 0.0) 2px,
+          rgba(0, 0, 0, 0.18) 3px,
+          rgba(0, 0, 0, 0.18) 4px
+        );
+        mix-blend-mode: multiply;
+        opacity: 0.55;
+        animation: win-scan 1.6s linear infinite;
+      }
+      #win-screen::after {
+        content: '';
+        position: absolute;
+        inset: -2px;
+        pointer-events: none;
+        background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0.85) 100%);
+        opacity: 0.9;
+      }
+      @keyframes win-scan {
+        from {
+          transform: translateY(-8px);
+        }
+        to {
+          transform: translateY(8px);
+        }
+      }
+      #win-ui {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-end;
+        padding-bottom: 9vh;
+        gap: 10px;
+        text-align: center;
+        pointer-events: none;
+      }
+      #win-restart {
+        color: rgba(255, 255, 255, 0.95);
+        font-size: clamp(16px, 2.2vw, 28px);
+        font-weight: 800;
+        letter-spacing: 2px;
+        text-shadow: 0 0 18px rgba(255, 27, 45, 0.6);
+        animation: pulse 0.75s infinite alternate;
+        user-select: none;
+      }
     </style>
   </head>
   <body>
@@ -150,6 +222,16 @@
       <div id="ui-container">
         <div id="progress-container"><div id="progress-fill"></div></div>
         <div id="start-text">PRESS SPACE TO ROCK</div>
+      </div>
+    </div>
+
+    <!-- Win screen (DOM overlay video, muted; Phaser plays win music) -->
+    <div id="win-screen" class="overlay" aria-label="Win screen">
+      <video id="win-video" autoplay loop muted playsinline preload="none">
+        <source data-src="/splash/win_screen.mp4" data-src-fallback="/splash/win_screen.mp4" type="video/mp4" />
+      </video>
+      <div id="win-ui">
+        <div id="win-restart">PRESS R TO RESTART</div>
       </div>
     </div>
 

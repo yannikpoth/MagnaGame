@@ -1,7 +1,7 @@
 /* global Phaser */
 
 import { MUSIC, PLATFORM } from '../game/constants.js';
-import { playMusic, setMusicBaseVolume, stopMusic } from '../audio/AudioManager.js';
+import { playMusic, playSfx, setMusicBaseVolume, stopMusic } from '../audio/AudioManager.js';
 
 const ASSET_ROOT = '/assets/processed/';
 
@@ -88,6 +88,7 @@ export class PreloadScene extends Phaser.Scene {
     // Manifests
     this.load.json('frames:player', `${ASSET_ROOT}spritesheets/main_char/frames.json`);
     this.load.json('frames:enemy', `${ASSET_ROOT}spritesheets/enemy_cyberbully/frames.json`);
+    this.load.json('frames:enemyhit', `${ASSET_ROOT}spritesheets/enemy_cyberbully_hit/frames.json`);
     this.load.json('frames:boss', `${ASSET_ROOT}spritesheets/end_boss_wolmerath/frames.json`);
 
     // Environment
@@ -108,10 +109,23 @@ export class PreloadScene extends Phaser.Scene {
     // FX
     this.load.image('fx:pearl', `${ASSET_ROOT}fx/pearl.png`);
 
+    // UI
+    this.load.image('ui:rule_board', `${ASSET_ROOT}ui/rule_board.png`);
+
     // Audio
-    this.load.audio('music:intro', `${ASSET_ROOT}audio/intro.mp3`);
-    this.load.audio('music:ingame', `${ASSET_ROOT}audio/ingame.mp3`);
-    this.load.audio('music:win', `${ASSET_ROOT}audio/win.mp3`);
+    // Intro is loaded as early as BootScene; avoid re-loading if already present.
+    if (!this.cache.audio.exists('music:intro')) {
+      this.load.audio('music:intro', `${ASSET_ROOT}audio/music/intro.mp3`);
+    }
+    this.load.audio('music:ingame', `${ASSET_ROOT}audio/music/ingame.mp3`);
+    this.load.audio('music:win', `${ASSET_ROOT}audio/music/win.mp3`);
+
+    this.load.audio('sfx:start', `${ASSET_ROOT}audio/sfx/start.mp3`);
+    this.load.audio('sfx:slap1', `${ASSET_ROOT}audio/sfx/slap1.mp3`);
+    this.load.audio('sfx:slap2', `${ASSET_ROOT}audio/sfx/slap2.mp3`);
+    this.load.audio('sfx:slap3', `${ASSET_ROOT}audio/sfx/slap3.mp3`);
+    this.load.audio('sfx:shot', `${ASSET_ROOT}audio/sfx/shot.mp3`);
+    this.load.audio('sfx:endboss_attack', `${ASSET_ROOT}audio/sfx/endboss_attack.mp3`);
 
     // Minimal loading text
     const w = this.scale.width;
@@ -147,6 +161,10 @@ export class PreloadScene extends Phaser.Scene {
     this._loadDone = false;
     this._onStartGame = () => {
       this._startRequested = true;
+      // UI feedback on starting the game.
+      playSfx(this, 'sfx:start', { duck: false, volume: 1 });
+      // Tell LevelScene to start ingame music slightly later than the start SFX.
+      this.registry.set('audio:ingameStartDelayMs', 900);
       // Stop intro track right before entering gameplay; LevelScene will start ingame loop.
       stopMusic(this, 'music:intro');
       if (this._loadDone) this.scene.start('LevelScene');
@@ -155,6 +173,7 @@ export class PreloadScene extends Phaser.Scene {
 
     const playerFrames = this.cache.json.get('frames:player');
     const enemyFrames = this.cache.json.get('frames:enemy');
+    const enemyHitFrames = this.cache.json.get('frames:enemyhit');
     const bossFrames = this.cache.json.get('frames:boss');
 
     const queueCharacter = (prefix, framesJson) => {
@@ -172,6 +191,7 @@ export class PreloadScene extends Phaser.Scene {
 
     queueCharacter('player', playerFrames);
     queueCharacter('enemy', enemyFrames);
+    queueCharacter('enemyhit', enemyHitFrames);
     queueCharacter('boss', bossFrames);
 
     // Second-phase loader: send progress events to the DOM loading bar.
@@ -277,6 +297,10 @@ export class PreloadScene extends Phaser.Scene {
             fps = 10;
             repeat = 0;
           }
+          if (prefix === 'enemyhit' && animName.startsWith('hit')) {
+            fps = Math.max(1, Math.round(fps * 2));
+            repeat = 0;
+          }
 
           const { framesPerChunk } = splitStripIntoSpriteSheets(this, {
             stripKey,
@@ -299,6 +323,7 @@ export class PreloadScene extends Phaser.Scene {
 
       mk('player');
       mk('enemy');
+      mk('enemyhit');
       mk('boss');
 
       // Tell the DOM overlay that Phaser is fully loaded; wait for user “start”.

@@ -36,8 +36,9 @@ export function ensureSound(scene, key, opts = {}) {
  * Start looping background music track and stop any other known tracks.
  * @param {Phaser.Scene} scene
  * @param {'music:intro'|'music:ingame'|'music:win'} key
+ * @param {{ fadeInMs?: number, volume?: number }} [opts]
  */
-export function playMusic(scene, key) {
+export function playMusic(scene, key, opts = {}) {
   try {
     // Stop other tracks (small project: keep it explicit).
     for (const k of ['music:intro', 'music:ingame', 'music:win']) {
@@ -46,10 +47,36 @@ export function playMusic(scene, key) {
       if (other?.isPlaying) other.stop();
     }
 
-    const music = ensureSound(scene, key, { loop: key !== 'music:win', volume: getBaseVolume(scene) });
-    music.setLoop(key !== 'music:win');
-    music.setVolume(getBaseVolume(scene));
-    if (!music.isPlaying) music.play();
+    const baseVol = getBaseVolume(scene);
+    const targetVol = Phaser.Math.Clamp(typeof opts.volume === 'number' ? opts.volume : baseVol, 0, 1);
+    const loop = key !== 'music:win';
+    const fadeInMs = Math.max(0, Math.floor(opts.fadeInMs ?? 0));
+
+    const music = ensureSound(scene, key, { loop, volume: targetVol });
+    music.setLoop(loop);
+
+    // If already playing (e.g. scene restart), just enforce current volume.
+    if (music.isPlaying) {
+      scene.tweens.killTweensOf(music);
+      music.setVolume(targetVol);
+      return;
+    }
+
+    if (fadeInMs > 0) {
+      scene.tweens.killTweensOf(music);
+      music.setVolume(0);
+      music.play();
+      scene.tweens.add({
+        targets: music,
+        volume: targetVol,
+        duration: fadeInMs,
+        ease: 'Sine.easeInOut',
+      });
+      return;
+    }
+
+    music.setVolume(targetVol);
+    music.play();
   } catch (_) {
     // ignore (some browsers lock audio until input)
   }
@@ -129,6 +156,84 @@ export function duckMusic(scene, opts = {}) {
         { volume: base, duration: releaseMs, ease: 'Sine.easeInOut' },
       ],
     });
+  } catch (_) {
+    // ignore
+  }
+}
+
+/**
+ * Convenience helper for future sound effects:
+ * - optionally ducks the music
+ * - plays a one-shot SFX
+ *
+ * @param {Phaser.Scene} scene
+ * @param {string} key
+ * @param {{
+ *   volume?: number,
+ *   duck?: boolean,
+ *   duckKey?: 'music:intro'|'music:ingame'|'music:win',
+ *   stopPrevious?: boolean,
+ *   fadeOutAfterMs?: number,
+ *   fadeOutMs?: number
+ * }} [opts]
+ */
+export function playSfx(scene, key, opts = {}) {
+  const volume = typeof opts.volume === 'number' ? Phaser.Math.Clamp(opts.volume, 0, 1) : 1;
+  const duck = opts.duck !== false;
+  const duckKey = opts.duckKey ?? 'music:ingame';
+
+  try {
+    if (duck) duckMusic(scene, { key: duckKey });
+    const needsPersistentInstance = Boolean(opts.stopPrevious) || (opts.fadeOutAfterMs ?? 0) > 0 || (opts.fadeOutMs ?? 0) > 0;
+
+    // Default path: allow overlapping SFX by letting Phaser spawn instances.
+    if (!needsPersistentInstance) {
+      scene.sound.play(key, { volume });
+      return;
+    }
+
+    // Special path: keep a persistent instance so we can stop/fade it.
+    const sfx = ensureSound(scene, key, { loop: false, volume });
+    // Cancel any prior tweens (e.g. fade-outs).
+    scene.tweens.killTweensOf(sfx);
+    // Cancel any prior scheduled fade-out (important: otherwise later plays can fade too early).
+    if (sfx.__fadeOutTimer?.remove) sfx.__fadeOutTimer.remove(false);
+    sfx.__fadeOutTimer = null;
+
+    // Optionally stop an already-playing instance immediately (useful for "boss attack" spam).
+    if (opts.stopPrevious && sfx.isPlaying) sfx.stop();
+
+    sfx.setLoop(false);
+    sfx.setVolume(volume);
+    sfx.play();
+
+    // Optional timed fade-out (e.g. endboss attack sound).
+    const fadeOutAfterMs = Math.max(0, Math.floor(opts.fadeOutAfterMs ?? 0));
+    const fadeOutMs = Math.max(0, Math.floor(opts.fadeOutMs ?? 220));
+    if (fadeOutAfterMs > 0) {
+      sfx.__fadeOutTimer = scene.time.delayedCall(fadeOutAfterMs, () => {
+        if (!sfx?.isPlaying) return;
+        try {
+          scene.tweens.killTweensOf(sfx);
+          scene.tweens.add({
+            targets: sfx,
+            volume: 0,
+            duration: fadeOutMs,
+            ease: 'Sine.easeInOut',
+            onComplete: () => {
+              try {
+                if (sfx.isPlaying) sfx.stop();
+              } finally {
+                // Reset volume so the next play starts at the intended level.
+                sfx.setVolume(volume);
+              }
+            },
+          });
+        } catch (_) {
+          // ignore
+        }
+      });
+    }
   } catch (_) {
     // ignore
   }

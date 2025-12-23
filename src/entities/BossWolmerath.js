@@ -78,7 +78,7 @@ export class BossWolmerath extends Phaser.Physics.Arcade.Sprite {
 
   /**
    * @param {number} time
-   * @param {{player:any, arenaLeft:number, arenaRight:number, onAttack?: (spec:any)=>void}} ctx
+   * @param {{player:any, arenaLeft:number, arenaRight:number, onPearl?: (spec:any)=>void, onAttack?: (spec:any)=>void}} ctx
    */
   updateAI(time, ctx) {
     if (!this.active || !ctx?.player?.active) return;
@@ -109,6 +109,7 @@ export class BossWolmerath extends Phaser.Physics.Arcade.Sprite {
 
       // Use a single attack animation for now.
       this.play('boss:attack_1', true);
+      if (ctx.onAttack) ctx.onAttack({ key: 'boss:attack_1' });
 
       // Spawn pearl AFTER the animation completes (matches the throw timing).
       this._pendingPearl = { onPearl: ctx.onPearl, dir: this.facing };
